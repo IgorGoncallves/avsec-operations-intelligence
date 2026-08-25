@@ -3,6 +3,8 @@ from datetime import datetime
 from airflow.sdk import dag, task
 
 from src.extract.vra import ExtratorVRA
+from src.extract.rima import ExtratorRIMA
+from src.extract.estatisticos import ExtratorEstatisticos
 
 
 @dag(
@@ -15,45 +17,47 @@ from src.extract.vra import ExtratorVRA
 def anac_monthly():
 
     @task
-    def extract_vra():
-        extractor = ExtratorVRA()
-        df = extractor.extrair()
+    def extrair_vra():
+        extrator = ExtratorVRA()
+        dataframe = extrator.extrair()
 
         return {
-            "source": "vra",
-            "records": df.height,
+            "fonte": "vra",
+            "registros": dataframe.height,
         }
 
     @task
-    def extract_rima():
-        print("Extração RIMA ainda não implementada.")
+    def extrair_rima():
+        extrator = ExtratorRIMA()
+        dataframe = extrator.extrair()
 
         return {
-            "source": "rima",
-            "records": 0,
+            "fonte": "rima",
+            "registros": dataframe.height,
         }
 
     @task
-    def extract_estatisticos():
-        print("Extração de Dados Estatísticos ainda não implementada.")
+    def extrair_estatisticos():
+        extrator = ExtratorEstatisticos()
+        dataframe = extrator.extrair()
 
         return {
-            "source": "estatisticos",
-            "records": 0,
+            "fonte": "estatisticos",
+            "registros": dataframe.height,
         }
 
     @task
-    def finish(vra, rima, estatisticos):
+    def finalizar(vra, rima, estatisticos):
         print("Extrações mensais concluídas.")
         print(f"VRA: {vra}")
         print(f"RIMA: {rima}")
         print(f"Estatísticos: {estatisticos}")
 
-    vra = extract_vra()
-    rima = extract_rima()
-    estatisticos = extract_estatisticos()
+    vra = extrair_vra()
+    rima = extrair_rima()
+    estatisticos = extrair_estatisticos()
 
-    finish(
+    finalizar(
         vra=vra,
         rima=rima,
         estatisticos=estatisticos,

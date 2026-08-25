@@ -1,5 +1,4 @@
 from concurrent.futures import ThreadPoolExecutor, as_completed
-from datetime import datetime
 import logging
 from pathlib import Path
 
@@ -10,27 +9,28 @@ import polars as pl
 logger = logging.getLogger(__name__)
 
 
-class ExtratorVRA:
+class ExtratorRIMA:
     def __init__(self):
-        self.url_base = "https://siros.anac.gov.br/siros/registros/diversos/vra"
+        self.ano = 2025
 
-        self.diretorio_raw = Path("/opt/airflow/data/raw/vra")
+        self.url_base = (
+            "https://sistemas.anac.gov.br/dadosabertos/"
+            "Operador%20Aeroportu%C3%A1rio/"
+            "Dados%20de%20Movimenta%C3%A7%C3%A3o%20Aeroportu%C3%A1rias"
+        )
+
+        self.diretorio_raw = Path("/opt/airflow/data/raw/rima")
         self.diretorio_processado = Path("/opt/airflow/data/processed")
 
         self.diretorio_raw.mkdir(parents=True, exist_ok=True)
         self.diretorio_processado.mkdir(parents=True, exist_ok=True)
 
     def extrair(self):
-        data_atual = datetime.now()
-
-        ano_atual = data_atual.year
-        mes_atual = data_atual.month
-
-        periodos = self._gerar_periodos(ano_atual, mes_atual)
+        meses = range(1, 13)
 
         logger.info(
-            "Iniciando extração paralela de %d períodos do VRA",
-            len(periodos),
+            "Iniciando extração paralela de %d períodos da RIMA",
+            len(meses),
         )
 
         dataframes = []
@@ -39,14 +39,13 @@ class ExtratorVRA:
             futuros = {
                 executor.submit(
                     self._extrair_periodo,
-                    ano,
                     mes,
-                ): (ano, mes)
-                for ano, mes in periodos
+                ): mes
+                for mes in meses
             }
 
             for futuro in as_completed(futuros):
-                ano, mes = futuros[futuro]
+                mes = futuros[futuro]
 
                 try:
                     dataframe = futuro.result()
@@ -56,15 +55,15 @@ class ExtratorVRA:
 
                 except Exception:
                     logger.exception(
-                        "Erro ao processar VRA - %02d/%d",
+                        "Erro ao processar RIMA - %02d/%d",
                         mes,
-                        ano,
+                        self.ano,
                     )
                     raise
 
         if not dataframes:
             logger.warning(
-                "Nenhum arquivo VRA foi encontrado para processamento."
+                "Nenhum arquivo RIMA foi encontrado para processamento."
             )
             return pl.DataFrame()
 
@@ -74,62 +73,50 @@ class ExtratorVRA:
         )
 
         logger.info(
-            "Extração VRA concluída - total de %d registros",
+            "Extração RIMA concluída - total de %d registros",
             resultado.height,
         )
 
-        self.salvar_parquet(
-            resultado,
-            ano_atual,
-            mes_atual,
-        )
+        self.salvar_parquet(resultado)
 
         return resultado
 
-    def _extrair_periodo(self, ano, mes):
+    def _extrair_periodo(self, mes):
         logger.info(
-            "Iniciando extração VRA - %02d/%d",
+            "Iniciando extração RIMA - %02d/%d",
             mes,
-            ano,
+            self.ano,
         )
 
-        caminho_arquivo = self.baixar_arquivo(
-            ano,
-            mes,
-        )
+        caminho_arquivo = self.baixar_arquivo(mes)
 
         if caminho_arquivo is None:
             logger.warning(
-                "Arquivo VRA não encontrado - %02d/%d",
+                "Arquivo RIMA não encontrado - %02d/%d",
                 mes,
-                ano,
+                self.ano,
             )
             return None
 
-        dataframe = self.ler_arquivo(
-            caminho_arquivo
-        )
+        dataframe = self.ler_arquivo(caminho_arquivo)
 
         logger.info(
-            "Arquivo VRA processado - %02d/%d - %d registros",
+            "Arquivo RIMA processado - %02d/%d - %d registros",
             mes,
-            ano,
+            self.ano,
             dataframe.height,
         )
 
         return dataframe
 
-    def baixar_arquivo(self, ano, mes):
-        nome_arquivo = self._montar_nome_arquivo(
-            ano,
-            mes,
-        )
+    def baixar_arquivo(self, mes):
+        nome_arquivo = self._montar_nome_arquivo(mes)
 
-        url = f"{self.url_base}/{ano}/{nome_arquivo}"
+        url = f"{self.url_base}/{self.ano}/{nome_arquivo}"
         caminho_saida = self.diretorio_raw / nome_arquivo
 
         logger.info(
-            "Baixando arquivo VRA: %s",
+            "Baixando arquivo RIMA: %s",
             url,
         )
 
@@ -157,7 +144,7 @@ class ExtratorVRA:
 
     def ler_arquivo(self, caminho_arquivo):
         logger.info(
-            "Lendo arquivo VRA: %s",
+            "Lendo arquivo RIMA: %s",
             caminho_arquivo,
         )
 
@@ -166,17 +153,16 @@ class ExtratorVRA:
             separator=";",
             infer_schema=False,
             encoding="utf8-lossy",
+            truncate_ragged_lines=True,
         )
 
-    def salvar_parquet(self, dataframe, ano_atual, mes_atual):
-        nome_arquivo = (
-            f"vra.parquet"
-        )
+    def salvar_parquet(self, dataframe):
+        nome_arquivo = "rima.parquet"
 
         caminho_saida = self.diretorio_processado / nome_arquivo
 
         logger.info(
-            "Salvando VRA consolidado em Parquet: %s",
+            "Salvando RIMA consolidado em Parquet: %s",
             caminho_saida,
         )
 
@@ -192,21 +178,5 @@ class ExtratorVRA:
 
         return caminho_saida
 
-    def _gerar_periodos(self, ano_atual, mes_atual):
-        periodos = []
-        ano_anterior = ano_atual - 1
-
-        for mes in range(1, 13):
-            periodos.append(
-                (ano_anterior, mes)
-            )
-
-        for mes in range(1, mes_atual + 1):
-            periodos.append(
-                (ano_atual, mes)
-            )
-
-        return periodos
-
-    def _montar_nome_arquivo(self, ano, mes):
-        return f"vra_{ano}_{mes:02d}.csv"
+    def _montar_nome_arquivo(self, mes):
+        return f"Movimentacoes_Aeroportuarias_{self.ano}{mes:02d}.csv"
