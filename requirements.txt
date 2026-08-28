@@ -2,3 +2,4 @@ httpx
 polars
 pyarrow
 psycopg2-binary
+xlsxwriter
